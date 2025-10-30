@@ -7,40 +7,34 @@ on:
 jobs:
   Continuous-Integration:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Log in to GitHub Container Registry
-        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
-
-      - name: Build, tag, and push Docker image to GHCR
-        env:
-          IMAGE: ghcr.io/${{ secrets.GHCR_USERNAME }}/${{ secrets.GHCR_REPO }}
+      # 🧠 Build and push Docker image to GitHub Container Registry
+      - name: Build and push Docker image to GHCR
         run: |
-          docker build -t $IMAGE:latest .
-          docker push $IMAGE:latest
-          echo "IMAGE=$IMAGE:latest" >> $GITHUB_ENV
+          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker build -t ghcr.io/${{ github.actor }}/vehicle-insurance-prediction:latest .
+          docker push ghcr.io/${{ github.actor }}/vehicle-insurance-prediction:latest
 
   Continuous-Deployment:
     needs: Continuous-Integration
     runs-on: self-hosted
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # 🧠 Log in to GHCR before pulling the image
       - name: Log in to GitHub Container Registry
-        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
+        run: echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
+      # 🧠 Pull and run the latest image on EC2 / self-hosted runner
       - name: Pull and run Docker container
-        env:
-          IMAGE: ghcr.io/${{ secrets.GHCR_USERNAME }}/${{ secrets.GHCR_REPO }}
         run: |
-          docker pull $IMAGE:latest
+          docker pull ghcr.io/${{ github.actor }}/vehicle-insurance-prediction:latest
           docker stop mlops-app || true
           docker rm mlops-app || true
           docker run -d --name mlops-app \
             -e MONGODB_URL="${{ secrets.MONGODB_URL }}" \
-            -p 5000:5000 $IMAGE:latest
+            -p 5000:5000 ghcr.io/${{ github.actor }}/vehicle-insurance-prediction:latest

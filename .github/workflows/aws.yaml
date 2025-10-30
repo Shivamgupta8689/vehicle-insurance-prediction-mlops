@@ -1,0 +1,46 @@
+name: Deploy Application Docker Image using GHCR (Free)
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  Continuous-Integration:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
+
+      - name: Build, tag, and push Docker image to GHCR
+        env:
+          IMAGE: ghcr.io/${{ secrets.GHCR_USERNAME }}/${{ secrets.GHCR_REPO }}
+        run: |
+          docker build -t $IMAGE:latest .
+          docker push $IMAGE:latest
+          echo "IMAGE=$IMAGE:latest" >> $GITHUB_ENV
+
+  Continuous-Deployment:
+    needs: Continuous-Integration
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
+
+      - name: Pull and run Docker container
+        env:
+          IMAGE: ghcr.io/${{ secrets.GHCR_USERNAME }}/${{ secrets.GHCR_REPO }}
+        run: |
+          docker pull $IMAGE:latest
+          docker stop mlops-app || true
+          docker rm mlops-app || true
+          docker run -d --name mlops-app \
+            -e MONGODB_URL="${{ secrets.MONGODB_URL }}" \
+            -p 5000:5000 $IMAGE:latest
